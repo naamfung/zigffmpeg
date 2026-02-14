@@ -3,14 +3,17 @@
 //! Show metadata from an input file.
 
 const std = @import("std");
-const Io = std.Io;
 
 const av = @import("av");
 
-pub fn main(init: std.process.Init) !void {
-    const arena = init.arena.allocator();
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
-    const args = try init.minimal.args.toSlice(arena);
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
     if (args.len != 2) {
         std.debug.print(
             \\usage: {s} <input_file>
@@ -20,21 +23,15 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     }
 
-    const io = init.io;
+    const stdout = std.fs.File.stdout().deprecatedWriter();
 
     const fc = try av.FormatContext.open_input(args[1], null, null, null);
     defer fc.close_input();
 
     try fc.find_stream_info(null);
 
-    var stdout_buffer: [100]u8 = undefined;
-    var stdout_writer = Io.File.stdout().writerStreaming(io, &stdout_buffer);
-    const stdout = &stdout_writer.interface;
-
     var it: ?*const av.Dictionary.Entry = null;
     while (fc.metadata.iterate(it)) |tag| : (it = tag) {
         try stdout.print("{s}={s}\n", .{ tag.key, tag.value });
     }
-
-    try stdout.flush();
 }
